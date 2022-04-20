@@ -78,7 +78,7 @@ async function decrypt(
     ciphertext,
   );
   if (!valid) {
-    return Promise.reject("signature not match");
+    throw new Error("signature not match");
   }
   const plaintext = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv },

@@ -36,12 +36,18 @@ func encrypt(secret, plaintext []byte) (nonce, ciphertext, signature []byte, err
 	}
 	ciphertext = aesgcm.Seal(nil, nonce, plaintext, nil)
 	mac := hmac.New(sha256.New, secret)
-	mac.Write(plaintext)
+	mac.Write(ciphertext)
 	signature = mac.Sum(nil)
 	return
 }
 
 func decrypt(secret, nonce, ciphertext, signature []byte) (plaintext []byte, err error) {
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(ciphertext)
+	if !hmac.Equal(mac.Sum(nil), signature) {
+		err = fmt.Errorf("signature not match")
+		return
+	}
 	var block cipher.Block
 	block, err = aes.NewCipher(secret)
 	if err != nil {
@@ -54,12 +60,6 @@ func decrypt(secret, nonce, ciphertext, signature []byte) (plaintext []byte, err
 	}
 	plaintext, err = aesgcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return
-	}
-	mac := hmac.New(sha256.New, secret)
-	mac.Write(plaintext)
-	if !hmac.Equal(mac.Sum(nil), signature) {
-		err = fmt.Errorf("signature not match")
 		return
 	}
 	return
@@ -95,7 +95,7 @@ func main() {
 		if err != nil {
 			return
 		}
-		c.JSON(map[string]int{"c": body["a"] + body["b"]})
+		err = c.JSON(map[string]int{"c": body["a"] + body["b"]})
 		return
 	})
 
@@ -123,12 +123,24 @@ func main() {
 		secret, _ := elliptic.P256().ScalarMult(cliPub.X, cliPub.Y, servPrivBytes)
 		var nonce []byte
 		nonce, err = base64.StdEncoding.DecodeString(body["i"].(string))
+		if err != nil {
+			return
+		}
 		var ciphertext []byte
 		ciphertext, err = base64.StdEncoding.DecodeString(body["c"].(string))
+		if err != nil {
+			return
+		}
 		var signature []byte
 		signature, err = base64.StdEncoding.DecodeString(body["s"].(string))
+		if err != nil {
+			return
+		}
 		var plaintext []byte
 		plaintext, err = decrypt(secret.Bytes(), nonce, ciphertext, signature)
+		if err != nil {
+			return
+		}
 		c.Locals("body", plaintext)
 		c.Locals("secret", secret.Bytes())
 		err = c.Next()

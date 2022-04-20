@@ -1,10 +1,10 @@
 import {
-  encode as base64Encode,
   decode as base64Decode,
+  encode as base64Encode,
 } from "https://deno.land/std@0.135.0/encoding/base64.ts";
 
-const { privateKey: cliPriv, publicKey: cliPub } =
-  await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+const { privateKey: cliPriv, publicKey: cliPub } = await crypto.subtle
+  .generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
     "deriveBits",
   ]);
 const cliPubJWK = await crypto.subtle.exportKey("jwk", cliPub);
@@ -22,14 +22,14 @@ async function encrypt(plaintext: ArrayBuffer) {
       servPubJWK,
       { name: "ECDH", namedCurve: "P-256" },
       true,
-      []
+      [],
     );
   }
   if (!encKey) {
     const secretBits = await crypto.subtle.deriveBits(
       { name: "ECDH", public: servPub },
       cliPriv,
-      256
+      256,
     );
     [encKey, signKey] = await Promise.all([
       crypto.subtle.importKey(
@@ -37,22 +37,28 @@ async function encrypt(plaintext: ArrayBuffer) {
         secretBits,
         { name: "AES-GCM" },
         true,
-        ["encrypt", "decrypt"]
+        ["encrypt", "decrypt"],
       ),
       crypto.subtle.importKey(
         "raw",
         secretBits,
         { name: "HMAC", hash: "SHA-256" },
         true,
-        ["sign", "verify"]
+        ["sign", "verify"],
       ),
     ]);
   }
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const [ciphertext, signature] = await Promise.all([
-    crypto.subtle.encrypt({ name: "AES-GCM", iv }, encKey, plaintext),
-    crypto.subtle.sign({ name: "HMAC" }, signKey, plaintext),
-  ]);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    encKey,
+    plaintext,
+  );
+  const signature = await crypto.subtle.sign(
+    { name: "HMAC" },
+    signKey,
+    ciphertext,
+  );
   return {
     iv,
     ciphertext,
@@ -63,22 +69,22 @@ async function encrypt(plaintext: ArrayBuffer) {
 async function decrypt(
   iv: ArrayBuffer,
   ciphertext: ArrayBuffer,
-  signature: ArrayBuffer
+  signature: ArrayBuffer,
 ) {
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    encKey,
-    ciphertext
-  );
   const valid = await crypto.subtle.verify(
     { name: "HMAC" },
     signKey,
     signature,
-    plaintext
+    ciphertext,
   );
   if (!valid) {
     return Promise.reject("signature not match");
   }
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    encKey,
+    ciphertext,
+  );
   return { plaintext };
 }
 
@@ -87,7 +93,7 @@ const max = 10000;
 let start = new Date().getTime();
 for (let i = 0; i < max; i++) {
   const { iv, ciphertext, signature } = await encrypt(
-    new TextEncoder().encode(JSON.stringify({ a: i, b: i }))
+    new TextEncoder().encode(JSON.stringify({ a: i, b: i })),
   );
   const body = JSON.stringify({
     p: cliPubJWK,
@@ -104,7 +110,7 @@ for (let i = 0; i < max; i++) {
   const { plaintext } = await decrypt(
     base64Decode(data.i),
     base64Decode(data.c),
-    base64Decode(data.s)
+    base64Decode(data.s),
   );
   const { c } = JSON.parse(new TextDecoder().decode(plaintext));
   if (i + i != c) {

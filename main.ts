@@ -88,7 +88,7 @@ async function decrypt(
   return { plaintext };
 }
 
-const max = 10000;
+const max = 1000;
 
 let start = new Date().getTime();
 for (let i = 0; i < max; i++) {

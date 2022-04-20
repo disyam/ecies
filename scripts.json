@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "start": {
+      "cmd": "deno run -A --unstable main.ts",
+      "watch": "main.ts"
+    }
+  }
+}

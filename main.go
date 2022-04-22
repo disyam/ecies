@@ -10,13 +10,14 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"golang.org/x/crypto/curve25519"
 )
 
 func encrypt(secret, plaintext []byte) (nonce, ciphertext, signature []byte, err error) {
@@ -65,26 +66,52 @@ func decrypt(secret, nonce, ciphertext, signature []byte) (plaintext []byte, err
 	return
 }
 
+func generateP256() (key jwk.Key, err error) {
+	var priv *ecdsa.PrivateKey
+	priv, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return
+	}
+	key, err = jwk.FromRaw(priv)
+	if err != nil {
+		return
+	}
+	err = key.Set(jwk.KeyIDKey, "P-256")
+	if err != nil {
+		return
+	}
+	err = key.Set(jwk.AlgorithmKey, "ECDH")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return
+}
+
+func generateX25519() (key jwk.Key, err error) {
+	var priv, pub [32]byte
+	_, err = io.ReadFull(rand.Reader, priv[:])
+	if err != nil {
+		return
+	}
+	priv[0] &= 248
+	priv[31] &= 127
+	priv[31] |= 64
+	curve25519.ScalarBaseMult(&pub, &priv)
+	return
+}
+
 func main() {
 	var err error
 
-	var servPrivBytes []byte
-	var servPrivX, servPrivY *big.Int
-	servPrivBytes, servPrivX, servPrivY, err = elliptic.GenerateKey(elliptic.P256(), rand.Reader)
+	var privJWK jwk.Key
+	privJWK, err = generateP256()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	var servPriv ecdsa.PrivateKey
-	servPriv.D = new(big.Int).SetBytes(servPrivBytes)
-	servPriv.PublicKey = ecdsa.PublicKey{X: servPrivX, Y: servPrivY, Curve: elliptic.P256()}
-	var servPubJWK jwk.Key
-	servPubJWK, err = jwk.FromRaw(servPriv.PublicKey)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	err = servPubJWK.Set(jwk.AlgorithmKey, "ECDH")
-	if err != nil {
-		log.Fatalln(err)
+	jwks := jwk.NewSet()
+	valid := jwks.Add(privJWK)
+	if !valid {
+		log.Fatalln(errors.New("cant add key to key set"))
 	}
 
 	app := fiber.New()
@@ -99,8 +126,12 @@ func main() {
 		return
 	})
 
-	app.Get("/pub", func(c *fiber.Ctx) (err error) {
-		err = c.JSON(servPubJWK)
+	app.Get("/jwks", func(c *fiber.Ctx) (err error) {
+		pubJWKS, err := jwk.PublicSetOf(jwks)
+		if err != nil {
+			return
+		}
+		err = c.JSON(pubJWKS)
 		return
 	})
 
@@ -120,7 +151,19 @@ func main() {
 		if err != nil {
 			return
 		}
-		secret, _ := elliptic.P256().ScalarMult(cliPub.X, cliPub.Y, servPrivBytes)
+		var servPrivJWK jwk.Key
+		var exist bool
+		servPrivJWK, exist = jwks.LookupKeyID(cliPub.Params().Name)
+		if !exist {
+			err = errors.New("key not exist")
+			return
+		}
+		var servPriv ecdsa.PrivateKey
+		err = servPrivJWK.Raw(&servPriv)
+		if err != nil {
+			return
+		}
+		secret, _ := elliptic.P256().ScalarMult(cliPub.X, cliPub.Y, servPriv.D.Bytes())
 		var nonce []byte
 		nonce, err = base64.StdEncoding.DecodeString(body["i"].(string))
 		if err != nil {

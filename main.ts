@@ -13,17 +13,26 @@ let servPub: CryptoKey;
 let encKey: CryptoKey;
 let signKey: CryptoKey;
 
+type jwks = {
+  keys: Array<JsonWebKey>;
+};
+
 async function encrypt(plaintext: ArrayBuffer) {
   if (!servPub) {
-    const resp = await fetch("http://127.0.0.1:8080/pub");
-    const servPubJWK = (await resp.json()) as JsonWebKey;
-    servPub = await crypto.subtle.importKey(
-      "jwk",
-      servPubJWK,
-      { name: "ECDH", namedCurve: "P-256" },
-      true,
-      [],
-    );
+    const resp = await fetch("http://127.0.0.1:8080/jwks");
+    const servPubJWKS = (await resp.json()) as jwks;
+    const servPubJWK = servPubJWKS.keys.find((key) => key.crv === "P-256");
+    if (servPubJWK) {
+      servPub = await crypto.subtle.importKey(
+        "jwk",
+        servPubJWK,
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
+        [],
+      );
+    } else {
+      throw new Error("key not found");
+    }
   }
   if (!encKey) {
     const secretBits = await crypto.subtle.deriveBits(

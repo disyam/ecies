@@ -11,7 +11,6 @@ const cliPubJWK = await crypto.subtle.exportKey("jwk", cliPub);
 
 let servPub: CryptoKey;
 let encKey: CryptoKey;
-let signKey: CryptoKey;
 
 async function encrypt(plaintext: ArrayBuffer) {
   if (!servPub) {
@@ -31,22 +30,13 @@ async function encrypt(plaintext: ArrayBuffer) {
       cliPriv,
       256,
     );
-    [encKey, signKey] = await Promise.all([
-      crypto.subtle.importKey(
-        "raw",
-        secretBits,
-        { name: "AES-GCM" },
-        true,
-        ["encrypt", "decrypt"],
-      ),
-      crypto.subtle.importKey(
-        "raw",
-        secretBits,
-        { name: "HMAC", hash: "SHA-256" },
-        true,
-        ["sign", "verify"],
-      ),
-    ]);
+    encKey = await crypto.subtle.importKey(
+      "raw",
+      secretBits,
+      { name: "AES-GCM" },
+      true,
+      ["encrypt", "decrypt"],
+    );
   }
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt(
@@ -54,32 +44,13 @@ async function encrypt(plaintext: ArrayBuffer) {
     encKey,
     plaintext,
   );
-  const signature = await crypto.subtle.sign(
-    { name: "HMAC" },
-    signKey,
-    ciphertext,
-  );
   return {
     iv,
     ciphertext,
-    signature,
   };
 }
 
-async function decrypt(
-  iv: ArrayBuffer,
-  ciphertext: ArrayBuffer,
-  signature: ArrayBuffer,
-) {
-  const valid = await crypto.subtle.verify(
-    { name: "HMAC" },
-    signKey,
-    signature,
-    ciphertext,
-  );
-  if (!valid) {
-    throw new Error("signature not match");
-  }
+async function decrypt(iv: ArrayBuffer, ciphertext: ArrayBuffer) {
   const plaintext = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv },
     encKey,
@@ -92,14 +63,13 @@ const max = 1000;
 
 let start = new Date().getTime();
 for (let i = 0; i < max; i++) {
-  const { iv, ciphertext, signature } = await encrypt(
+  const { iv, ciphertext } = await encrypt(
     new TextEncoder().encode(JSON.stringify({ a: i, b: i })),
   );
   const body = JSON.stringify({
     p: cliPubJWK,
     i: base64Encode(iv),
     c: base64Encode(ciphertext),
-    s: base64Encode(signature),
   });
   const resp = await fetch("http://127.0.0.1:8080/adds", {
     method: "POST",
@@ -110,7 +80,6 @@ for (let i = 0; i < max; i++) {
   const { plaintext } = await decrypt(
     base64Decode(data.i),
     base64Decode(data.c),
-    base64Decode(data.s),
   );
   const { c } = JSON.parse(new TextDecoder().decode(plaintext));
   if (i + i != c) {

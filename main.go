@@ -5,12 +5,9 @@ import (
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"math/big"
@@ -19,7 +16,7 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
-func encrypt(secret, plaintext []byte) (nonce, ciphertext, signature []byte, err error) {
+func encrypt(secret, plaintext []byte) (nonce, ciphertext []byte, err error) {
 	var block cipher.Block
 	block, err = aes.NewCipher(secret)
 	if err != nil {
@@ -35,19 +32,10 @@ func encrypt(secret, plaintext []byte) (nonce, ciphertext, signature []byte, err
 		return
 	}
 	ciphertext = aesgcm.Seal(nil, nonce, plaintext, nil)
-	mac := hmac.New(sha256.New, secret)
-	mac.Write(ciphertext)
-	signature = mac.Sum(nil)
 	return
 }
 
-func decrypt(secret, nonce, ciphertext, signature []byte) (plaintext []byte, err error) {
-	mac := hmac.New(sha256.New, secret)
-	mac.Write(ciphertext)
-	if !hmac.Equal(mac.Sum(nil), signature) {
-		err = fmt.Errorf("signature not match")
-		return
-	}
+func decrypt(secret, nonce, ciphertext []byte) (plaintext []byte, err error) {
 	var block cipher.Block
 	block, err = aes.NewCipher(secret)
 	if err != nil {
@@ -131,13 +119,8 @@ func main() {
 		if err != nil {
 			return
 		}
-		var signature []byte
-		signature, err = base64.StdEncoding.DecodeString(body["s"].(string))
-		if err != nil {
-			return
-		}
 		var plaintext []byte
-		plaintext, err = decrypt(secret.Bytes(), nonce, ciphertext, signature)
+		plaintext, err = decrypt(secret.Bytes(), nonce, ciphertext)
 		if err != nil {
 			return
 		}
@@ -159,15 +142,14 @@ func main() {
 		if err != nil {
 			return
 		}
-		var nonce, ciphertext, signature []byte
-		nonce, ciphertext, signature, err = encrypt(secret, plaintext)
+		var nonce, ciphertext []byte
+		nonce, ciphertext, err = encrypt(secret, plaintext)
 		if err != nil {
 			return
 		}
 		err = c.JSON(map[string]string{
 			"i": base64.StdEncoding.EncodeToString(nonce),
 			"c": base64.StdEncoding.EncodeToString(ciphertext),
-			"s": base64.StdEncoding.EncodeToString(signature),
 		})
 		return
 	})

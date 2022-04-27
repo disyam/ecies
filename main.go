@@ -17,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/x25519"
 	"golang.org/x/crypto/curve25519"
 )
 
@@ -88,30 +89,50 @@ func generateP256() (key jwk.Key, err error) {
 }
 
 func generateX25519() (key jwk.Key, err error) {
-	var priv, pub [32]byte
-	_, err = io.ReadFull(rand.Reader, priv[:])
+	priv := make([]byte, curve25519.ScalarSize)
+	_, err = rand.Read(priv)
 	if err != nil {
 		return
 	}
-	priv[0] &= 248
-	priv[31] &= 127
-	priv[31] |= 64
-	curve25519.ScalarBaseMult(&pub, &priv)
+	var pub []byte
+	pub, err = curve25519.X25519(priv, curve25519.Basepoint)
+	if err != nil {
+		return
+	}
+	key, err = jwk.FromRaw(x25519.PrivateKey{})
+	if err != nil {
+		return
+	}
+	// key.Set("x", base64.URLEncoding.EncodeToString(pub))
+	jwkJSON := `{
+		"kty":"OKP
+	}`
+	fmt.Println("jwkJSON", jwkJSON)
 	return
 }
 
 func main() {
 	var err error
 
-	var privJWK jwk.Key
-	privJWK, err = generateP256()
+	var p256JWK jwk.Key
+	p256JWK, err = generateP256()
 	if err != nil {
 		log.Fatalln(err)
 	}
 	jwks := jwk.NewSet()
-	valid := jwks.Add(privJWK)
-	if !valid {
-		log.Fatalln(errors.New("cant add key to key set"))
+	isValid := jwks.Add(p256JWK)
+	if !isValid {
+		log.Fatalln(errors.New("cant add p-256 key to key set"))
+	}
+
+	var x25519JWK jwk.Key
+	x25519JWK, err = generateX25519()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	isValid = jwks.Add(x25519JWK)
+	if !isValid {
+		log.Fatalln(errors.New("cant add x25519 key to key set"))
 	}
 
 	app := fiber.New()

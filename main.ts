@@ -6,8 +6,11 @@ import {
 const { privateKey: cliPriv, publicKey: cliPub } = await crypto.subtle
   .generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
     "deriveBits",
+    "deriveKey",
   ]);
-const cliPubJWK = await crypto.subtle.exportKey("jwk", cliPub);
+const cliPubJWK = base64Encode(
+  JSON.stringify(await crypto.subtle.exportKey("jwk", cliPub)),
+);
 
 let servPub: CryptoKey;
 let encKey: CryptoKey;
@@ -25,15 +28,10 @@ async function encrypt(plaintext: ArrayBuffer) {
     );
   }
   if (!encKey) {
-    const secretBits = await crypto.subtle.deriveBits(
+    encKey = await crypto.subtle.deriveKey(
       { name: "ECDH", public: servPub },
       cliPriv,
-      256,
-    );
-    encKey = await crypto.subtle.importKey(
-      "raw",
-      secretBits,
-      { name: "AES-GCM" },
+      { name: "AES-GCM", length: 256 },
       true,
       ["encrypt", "decrypt"],
     );

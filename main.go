@@ -93,13 +93,13 @@ func main() {
 	})
 
 	app.Use(func(c *fiber.Ctx) (err error) {
-		var body map[string]string
+		var body map[string]interface{}
 		err = json.Unmarshal(c.Body(), &body)
 		if err != nil {
 			return
 		}
 		var cliPubBytes []byte
-		cliPubBytes, err = base64.StdEncoding.DecodeString(body["p"])
+		cliPubBytes, err = json.Marshal(body["p"].(map[string]interface{}))
 		if err != nil {
 			return
 		}
@@ -110,12 +110,12 @@ func main() {
 		}
 		secret, _ := elliptic.P256().ScalarMult(cliPub.X, cliPub.Y, servPrivBytes)
 		var nonce []byte
-		nonce, err = base64.StdEncoding.DecodeString(body["i"])
+		nonce, err = base64.StdEncoding.DecodeString(body["i"].(string))
 		if err != nil {
 			return
 		}
 		var ciphertext []byte
-		ciphertext, err = base64.StdEncoding.DecodeString(body["c"])
+		ciphertext, err = base64.StdEncoding.DecodeString(body["c"].(string))
 		if err != nil {
 			return
 		}

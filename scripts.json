@@ -3,6 +3,10 @@
     "start": {
       "cmd": "deno run -A --unstable main.ts",
       "watch": "main.ts"
+    },
+    "mbaas": {
+      "cmd": "deno run -A --unstable mbaas.ts",
+      "watch": "mbaas.ts"
     }
   }
 }

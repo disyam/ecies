@@ -2,15 +2,14 @@ import {
   decode as base64Decode,
   encode as base64Encode,
 } from "https://deno.land/std@0.135.0/encoding/base64.ts";
+import ProgressBar from "https://deno.land/x/progress@v1.2.8/mod.ts";
 
 const { privateKey: cliPriv, publicKey: cliPub } = await crypto.subtle
   .generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
     "deriveBits",
     "deriveKey",
   ]);
-const cliPubJWK = base64Encode(
-  JSON.stringify(await crypto.subtle.exportKey("jwk", cliPub)),
-);
+const cliPubJWK = await crypto.subtle.exportKey("jwk", cliPub);
 
 let servPub: CryptoKey;
 let encKey: CryptoKey;
@@ -57,10 +56,15 @@ async function decrypt(iv: ArrayBuffer, ciphertext: ArrayBuffer) {
   return { plaintext };
 }
 
-const max = 1000;
+const total = 100000;
 
-let start = new Date().getTime();
-for (let i = 0; i < max; i++) {
+console.log();
+console.log("calling encrypted API");
+let progress = new ProgressBar({
+  total,
+  interval: 1,
+});
+for (let i = 0; i < total; i++) {
   const { iv, ciphertext } = await encrypt(
     new TextEncoder().encode(JSON.stringify({ a: i, b: i })),
   );
@@ -83,13 +87,16 @@ for (let i = 0; i < max; i++) {
   if (i + i != c) {
     throw new Error("result not valid");
   }
+  progress.render(i + 1);
 }
-let end = new Date().getTime();
-let duration = end - start;
-console.log("encrypted duration", duration, "ms");
 
-start = new Date().getTime();
-for (let i = 0; i < max; i++) {
+console.log();
+console.log("calling plain API");
+progress = new ProgressBar({
+  total,
+  interval: 1,
+});
+for (let i = 0; i < total; i++) {
   const resp = await fetch("http://127.0.0.1:8080/add", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -99,7 +106,6 @@ for (let i = 0; i < max; i++) {
   if (i + i != c) {
     throw new Error("result not valid");
   }
+  progress.render(1 + i);
 }
-end = new Date().getTime();
-duration = end - start;
-console.log("plain duration", duration, "ms");
+console.log();

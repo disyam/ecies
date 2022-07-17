@@ -75,7 +75,29 @@ async function decrypt(
   return JSON.parse(new TextDecoder().decode(plaintext));
 }
 
-async function request() {
+async function request1() {
+  const endpoint = Deno.env.get("MBAAS_ENDPOINT") || "";
+  const servPub = await getServPub(endpoint);
+  const { privateKey: cliPriv, publicKey: cliPub } = await genCliKeyPair();
+  const sharedKey = await genSharedKey(cliPriv, servPub);
+  const cliPubJWK = await crypto.subtle.exportKey("jwk", cliPub);
+  const resp = await fetch(
+    `${endpoint}/services/auth/account?email=${Deno.env.get("MBAAS_EMAIL")}`,
+    {
+      method: "get",
+      headers: {
+        "x-encryption-key": base64Encode(JSON.stringify(cliPubJWK)),
+      },
+    },
+  );
+  const resData = await decrypt(
+    base64Decode((await resp.json()).cipherText as string),
+    sharedKey,
+  );
+  return resData;
+}
+
+async function request2() {
   const endpoint = Deno.env.get("MBAAS_ENDPOINT") || "";
   const reqData = {
     provider: "local",
@@ -108,4 +130,5 @@ async function request() {
   return resData;
 }
 
-console.log(await request());
+console.log(await request1());
+console.log(await request2());
